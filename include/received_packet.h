@@ -8,6 +8,7 @@
 #include <queue>
 #include <any>
 #include <cstdio>
+#include <functional>
 
 using namespace std;
 
@@ -65,7 +66,7 @@ public :
     void receive_start(pcap_t *handle) {
         EthHdr receive_eth;
 	    struct pcap_pkthdr* header;
-	    u_char* packet;
+	    const u_char* packet;
         int res;
         while(1) {
             res = pcap_next_ex(handle, &header, &packet);
@@ -83,14 +84,16 @@ public :
                     header->caplen);
             if (receive_eth.type() == EthHdr::Arp) {
                 lock_guard<mutex> lock(arpPacketQueueMtx);
-                arpPacketQueue.push(EthArpPacket(packet));
+                arpPacketQueue.push(EthArpPacket((u_char *)packet));
             }
             else {
                 vector<u_char> data(packet,packet+header->caplen);
                 lock_guard<mutex> lock(relayPacketQueueMtx);
                 relayPacketQueue.push(data);
             }
-            thread t(notify, receive_eth.type());
+            thread t([this, type = receive_eth.type()]() {
+                this->notify(type);
+            });
             t.detach();
             receive_eth.type_ = 0;
         }

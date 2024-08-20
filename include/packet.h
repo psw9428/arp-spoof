@@ -6,6 +6,8 @@
 #include "util.h"
 #include <mutex>
 
+using namespace std;
+
 #pragma pack(push, 1)
 struct EthArpPacket final {
 	EthHdr eth_;
@@ -69,8 +71,8 @@ struct AttackPacket final {
 		targetIp = string(tip);
 		handle = h;
 		is_ready = set_attack_Macs();
-		if (is_ready) printf("[*] new Attack Flow generated (%s) (%s)\n", senderIp, targetIp);
-		else printf("[*] Failed to generate new Attack flow (%s) (%s)\n", senderIp, targetIp);
+		if (is_ready) cout << "[*] new Attack Flow generated ("<<senderIp<<") ("<<targetIp<<")" << endl;
+		else cout << "[*] Failed to generate new Attack flow ("<<senderIp<<") ("<<targetIp<<")" << endl;
 	}
 
 	void set_getMac_packet(Ip who) {
@@ -101,16 +103,16 @@ struct AttackPacket final {
 	Mac get_mac_for_attack(Ip who) {
 		EthArpPacket *receive;
 		struct pcap_pkthdr* header;
-		u_char *data;
+		const u_char *pdata;
 		int res, i;
 		set_getMac_packet(who);
 		for (i = 0; i < 20; i++) {
 			if (!(i % 10)) send_my_packet();
-			res = pcap_next_ex(handle, &header, &data);
+			res = pcap_next_ex(handle, &header, &pdata);
 			if (res == 0) continue;
 			if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK)
 				fprintf(stderr, "pcap_next_ex return %d(%s)\n", res, pcap_geterr(handle));
-			receive = reinterpret_cast<EthArpPacket *>(data);
+			receive = reinterpret_cast<EthArpPacket *>((u_char *)pdata);
 			if (is_arp_for_me(*receive)) break;
 		}
 		if (i == 20) return Mac(0);
@@ -134,11 +136,11 @@ struct AttackPacket final {
 				etharp.arp_.smac() == senderMac);
 	}
 
-	void relay_send(vector<u_char> &data) {
-		EthHdr *eth = reinterpret_cast<EthHdr*>(data.data());
+	void relay_send(vector<u_char>& d) {
+		EthHdr *eth = reinterpret_cast<EthHdr*>(d.data());
 		eth->dmac_ = targetMac;
 		eth->smac_ = myMac;
-		pcap_sendpacket(handle, data.data(), data.size());
+		pcap_sendpacket(handle, d.data(), d.size());
 	}
 };
 #pragma pack(pop)

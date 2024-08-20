@@ -52,11 +52,3 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(INCLUDE_DIR)/%.h
 # Clean
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET)
-
-# Include dependencies
--include $(OBJ_FILES:.o=.d)
-
-# Generate dependency files
-$(OBJ_DIR)/%.d: $(SRC_DIR)/%.cpp
-	@mkdir -p $(OBJ_DIR)
-	@$(CXX) $(INCLUDES) -MM -MF $@ -MT "$(@:.d=.o)" $<

@@ -1,7 +1,4 @@
-#include "../include/packet.h"
-#include "../include/manager.h"
-#include <cstdio>
-#include <iostream>
+#include "../include/main.h"
 
 using namespace std;
 
