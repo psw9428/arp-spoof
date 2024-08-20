@@ -63,39 +63,37 @@ public :
         }
     }
 
-    void receive_start(pcap_t *handle) {
+    void process_captured_packet(u_char *user_data, const struct pcap_pkthdr *header, const u_char *packet) {
         EthHdr receive_eth;
-	    struct pcap_pkthdr* header;
-	    const u_char* packet;
-        int res;
-        while(1) {
-            res = pcap_next_ex(handle, &header, &packet);
-		    if (res == 0) continue;
-		    if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
-			    fprintf(stderr, "pcap_next_ex return %d(%s)\n", res, pcap_geterr(handle));
-			    continue;
-		    }
-		    memcpy(reinterpret_cast<void *>(&receive_eth), packet, sizeof(EthHdr));
-            printf("[Receive|%s] : %d byte\n", \
-                    receive_eth.type() == EthHdr::Arp ? "Arp" : \
-                    receive_eth.type() == EthHdr::Ip4 ? "Ip4" : \
-                    receive_eth.type() == EthHdr::Ip6 ? "Ip6" : \
-                    "etc..", \
-                    header->caplen);
-            if (receive_eth.type() == EthHdr::Arp) {
-                lock_guard<mutex> lock(arpPacketQueueMtx);
-                arpPacketQueue.push(EthArpPacket((u_char *)packet));
-            }
-            else {
-                vector<u_char> data(packet,packet+header->caplen);
-                lock_guard<mutex> lock(relayPacketQueueMtx);
-                relayPacketQueue.push(data);
-            }
-            thread t([this, type = receive_eth.type()]() {
-                this->notify(type);
-            });
-            t.detach();
-            receive_eth.type_ = 0;
+        memcpy(reinterpret_cast<void *>(&receive_eth), packet, sizeof(EthHdr));
+        printf("[Receive|%s] : %d byte\n", \
+                receive_eth.type() == EthHdr::Arp ? "Arp" : \
+                receive_eth.type() == EthHdr::Ip4 ? "Ip4" : \
+                receive_eth.type() == EthHdr::Ip6 ? "Ip6" : \
+                "etc..", \
+                header->caplen);
+        if (receive_eth.type() == EthHdr::Arp) {
+            lock_guard<mutex> lock(arpPacketQueueMtx);
+            arpPacketQueue.push(EthArpPacket((u_char *)packet));
         }
+        else {
+            vector<u_char> d(packet,packet+header->caplen);
+            lock_guard<mutex> lock(relayPacketQueueMtx);
+            relayPacketQueue.push(d);
+        }
+        thread t([this, type = receive_eth.type()]() {
+            this->notify(type);
+        });
+        t.detach();
+        receive_eth.type_ = 0;
+    }
+
+    static void call_back_for_pcap_loop(u_char *user_data, const struct pcap_pkthdr *header, const u_char *packet) {
+        ReceivedPacket* instance = &getInstance();
+        instance->process_captured_packet(user_data, header, packet);
+    }
+
+    void receive_start(pcap_t *handle) {
+        pcap_loop(handle, -1, &ReceivedPacket::call_back_for_pcap_loop, NULL);
     }
 };

@@ -1,4 +1,5 @@
 #include "../include/main.h"
+#include <stdio.h>
 
 using namespace std;
 
@@ -15,6 +16,10 @@ int main(int argc, char* argv[]) {
 		usage();
 		return -1;
 	}
+	setvbuf(stdin, 0, 2, 0);
+	setvbuf(stdout, 0, 2, 0);
+	setvbuf(stderr, 0, 2, 0);
+
 	char* dev = argv[1];
 	char errbuf[PCAP_ERRBUF_SIZE];
 	pcap_t* handle = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
@@ -25,10 +30,8 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 	rootManager.init(argc, argv, handle);
-	cout << "All Ready Now! Do you want to start? (y/n) ";
-	cin >> input;
-	if (input == "y") {
-		rootManager.start_receive();
-	}
+	cout << "[*] Start Receive Packet" << endl;
+	rootManager.start_receive();
 	pcap_close(handle);
 }
+//
